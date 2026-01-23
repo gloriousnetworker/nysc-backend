@@ -1,17 +1,21 @@
 const admin = require('firebase-admin');
-const path = require('path');
 
 try {
-  const serviceAccount = require(path.join(__dirname, '../firebase-admin.json'));
+  let serviceAccount;
+  
+  if (process.env.NODE_ENV === 'production') {
+    serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_CONFIG);
+  } else {
+    serviceAccount = require('../firebase-admin.json');
+  }
   
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
   });
 
-  console.log('Firebase initialized successfully');
+  console.log('✅ Firebase initialized successfully');
 } catch (error) {
-  console.error('Firebase initialization error:', error);
-  process.exit(1);
+  console.error('❌ Firebase initialization error:', error.message);
 }
 
 const db = admin.firestore();

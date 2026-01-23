@@ -3,18 +3,14 @@ const {
   generateCode, 
   hashPassword, 
   comparePassword, 
-  generateToken,
-  generateStateCode 
+  generateToken
 } = require('../utils/helpers');
 const { sendVerificationEmail } = require('../utils/emailService');
 
 console.log('✅ Auth Controller loaded successfully');
 
 const signup = async (req, res) => {
-  console.log('📥 Signup request received:', {
-    body: req.body,
-    headers: req.headers
-  });
+  console.log('📥 Signup request received:', req.body);
 
   try {
     const {
@@ -22,121 +18,109 @@ const signup = async (req, res) => {
       lastName,
       email,
       phone,
+      stateCode,
       servingState,
       localGovernment,
       ppa,
       cdsGroup,
-      password
+      password,
+      confirmPassword
     } = req.body;
 
-    // Validate required fields
-    const requiredFields = ['firstName', 'lastName', 'email', 'phone', 'servingState', 'localGovernment', 'ppa', 'cdsGroup', 'password'];
-    const missingFields = requiredFields.filter(field => !req.body[field]);
-
-    if (missingFields.length > 0) {
-      console.log('❌ Missing fields:', missingFields);
+    if (!firstName || !lastName || !email || !phone || !stateCode || 
+        !servingState || !localGovernment || !ppa || !cdsGroup || !password || !confirmPassword) {
       return res.status(400).json({
         success: false,
-        message: `Missing required fields: ${missingFields.join(', ')}`
+        message: 'All fields are required'
       });
     }
 
-    console.log('🔍 Checking if email exists:', email);
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Passwords do not match'
+      });
+    }
+
     const emailLower = email.toLowerCase();
 
-    // Check if email already exists
     const existingEmail = await db.collection('corpers')
       .where('email', '==', emailLower)
       .get();
 
     if (!existingEmail.empty) {
-      console.log('❌ Email already exists:', emailLower);
       return res.status(400).json({
         success: false,
         message: 'Email already registered'
       });
     }
 
-    // Check if phone already exists
-    console.log('🔍 Checking if phone exists:', phone);
-    const existingPhone = await db.collection('corpers')
-      .where('phone', '==', phone)
+    const existingStateCode = await db.collection('corpers')
+      .where('stateCode', '==', stateCode.toUpperCase())
       .get();
 
-    if (!existingPhone.empty) {
-      console.log('❌ Phone already exists:', phone);
+    if (!existingStateCode.empty) {
       return res.status(400).json({
         success: false,
-        message: 'Phone number already registered'
+        message: 'State code already registered'
       });
     }
 
-    // Generate state code and verification code
-    console.log('🔧 Generating state code for:', servingState);
-    const stateCode = generateStateCode(servingState);
     const verificationCode = generateCode();
+    const verificationExpiry = new Date(Date.now() + 15 * 60000);
     
-    console.log('🔑 Hashing password...');
     const hashedPassword = await hashPassword(password);
 
-    // Prepare corper data
     const corperData = {
       firstName,
       lastName,
       email: emailLower,
       phone,
-      stateCode,
+      stateCode: stateCode.toUpperCase(),
       servingState,
       localGovernment,
       ppa,
       cdsGroup,
       password: hashedPassword,
       verificationCode,
+      verificationExpiry: verificationExpiry.toISOString(),
       isVerified: false,
       status: 'pending',
+      registrationStep: 2,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
-    console.log('💾 Saving to pending_registrations:', emailLower);
-    // Save to pending registrations
     await db.collection('pending_registrations').doc(emailLower).set(corperData);
 
-    // Send verification email
-    console.log('📧 Sending verification email to:', email);
     const emailSent = await sendVerificationEmail(email, verificationCode, `${firstName} ${lastName}`);
 
     if (!emailSent) {
-      console.log('❌ Failed to send email, deleting pending registration');
       await db.collection('pending_registrations').doc(emailLower).delete();
       return res.status(500).json({
         success: false,
-        message: 'Failed to send verification email. Please try again.'
+        message: 'Failed to send verification email'
       });
     }
 
-    console.log('✅ Signup successful for:', email);
     res.status(201).json({
       success: true,
-      message: 'Registration successful! Check your email for verification code.',
+      message: 'Registration successful! Check email for verification code.',
       data: {
         email: emailLower,
-        stateCode,
-        note: 'Please check your email (including spam folder) for verification code'
+        stateCode: stateCode.toUpperCase()
       }
     });
 
   } catch (error) {
-    console.error('🔥 Signup error:', error);
+    console.error('Signup error:', error);
     res.status(500).json({
       success: false,
-      message: 'Internal server error during registration',
-      ...(process.env.NODE_ENV === 'development' && { error: error.message })
+      message: 'Internal server error'
     });
   }
 };
 
-// Other functions remain the same...
 const verifyEmail = async (req, res) => {
   console.log('📥 Verify email request:', req.body);
 
@@ -146,7 +130,7 @@ const verifyEmail = async (req, res) => {
     if (!email || !verificationCode) {
       return res.status(400).json({
         success: false,
-        message: 'Email and verification code are required'
+        message: 'Email and verification code required'
       });
     }
 
@@ -170,7 +154,14 @@ const verifyEmail = async (req, res) => {
       });
     }
 
-    const { verificationCode: _, ...corperData } = pendingData;
+    if (new Date() > new Date(pendingData.verificationExpiry)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Verification code expired'
+      });
+    }
+
+    const { verificationCode: _, verificationExpiry: __, ...corperData } = pendingData;
     
     const finalData = {
       ...corperData,
@@ -182,7 +173,7 @@ const verifyEmail = async (req, res) => {
     await db.collection('corpers').doc(pendingData.stateCode).set(finalData);
     await pendingRef.delete();
 
-    const token = generateToken(pendingData.stateCode, pendingData.stateCode, 'corper');
+    const token = generateToken(pendingData.stateCode, 'corper');
 
     res.status(200).json({
       success: true,
@@ -208,7 +199,7 @@ const verifyEmail = async (req, res) => {
 };
 
 const login = async (req, res) => {
-  console.log('📥 Login request:', { identifier: req.body.identifier });
+  console.log('📥 Login request:', req.body);
 
   try {
     const { identifier, password } = req.body;
@@ -216,7 +207,7 @@ const login = async (req, res) => {
     if (!identifier || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Email/State Code and password are required'
+        message: 'Email/State Code and password required'
       });
     }
 
@@ -228,7 +219,7 @@ const login = async (req, res) => {
         .get();
     } else {
       corperQuery = await db.collection('corpers')
-        .where('stateCode', '==', identifier)
+        .where('stateCode', '==', identifier.toUpperCase())
         .get();
     }
 
@@ -258,7 +249,7 @@ const login = async (req, res) => {
       });
     }
 
-    const token = generateToken(corperData.stateCode, corperData.stateCode, 'corper');
+    const token = generateToken(corperData.stateCode, 'corper');
 
     res.status(200).json({
       success: true,
@@ -315,9 +306,11 @@ const resendCode = async (req, res) => {
 
     const pendingData = pendingDoc.data();
     const newCode = generateCode();
+    const newExpiry = new Date(Date.now() + 15 * 60000);
 
     await pendingRef.update({
       verificationCode: newCode,
+      verificationExpiry: newExpiry.toISOString(),
       updatedAt: new Date().toISOString()
     });
 
@@ -332,7 +325,7 @@ const resendCode = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'New verification code sent to your email'
+      message: 'New verification code sent'
     });
   } catch (error) {
     console.error('Resend code error:', error);
@@ -368,7 +361,8 @@ const checkStatus = async (req, res) => {
           status: 'pending',
           email: data.email,
           stateCode: data.stateCode,
-          name: `${data.firstName} ${data.lastName}`
+          name: `${data.firstName} ${data.lastName}`,
+          step: data.registrationStep || 2
         }
       });
     }
@@ -403,10 +397,215 @@ const checkStatus = async (req, res) => {
   }
 };
 
+const continueRegistration = async (req, res) => {
+  console.log('📥 Continue registration:', req.body);
+
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    const emailLower = email.toLowerCase();
+    const pendingRef = db.collection('pending_registrations').doc(emailLower);
+    const pendingDoc = await pendingRef.get();
+
+    if (!pendingDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'No pending registration found'
+      });
+    }
+
+    const pendingData = pendingDoc.data();
+    const newCode = generateCode();
+    const newExpiry = new Date(Date.now() + 15 * 60000);
+
+    await pendingRef.update({
+      verificationCode: newCode,
+      verificationExpiry: newExpiry.toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+
+    const emailSent = await sendVerificationEmail(email, newCode, `${pendingData.firstName} ${pendingData.lastName}`);
+
+    if (!emailSent) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send verification code'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Verification code resent. Check your email.',
+      data: {
+        email: emailLower,
+        stateCode: pendingData.stateCode
+      }
+    });
+  } catch (error) {
+    console.error('Continue registration error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+const forgotPassword = async (req, res) => {
+  console.log('📥 Forgot password:', req.body);
+
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    const emailLower = email.toLowerCase();
+    const corperQuery = await db.collection('corpers')
+      .where('email', '==', emailLower)
+      .get();
+
+    if (corperQuery.empty) {
+      return res.status(404).json({
+        success: false,
+        message: 'Email not found'
+      });
+    }
+
+    const corperDoc = corperQuery.docs[0];
+    const corperData = corperDoc.data();
+    
+    const resetCode = generateCode();
+    const resetExpiry = new Date(Date.now() + 60 * 60000);
+
+    await db.collection('password_resets').doc(emailLower).set({
+      email: emailLower,
+      resetCode,
+      resetExpiry: resetExpiry.toISOString(),
+      createdAt: new Date().toISOString()
+    });
+
+    const emailSent = await sendVerificationEmail(email, resetCode, `${corperData.firstName} ${corperData.lastName}`);
+
+    if (!emailSent) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send reset code'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset code sent to your email'
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  console.log('📥 Reset password:', req.body);
+
+  try {
+    const { email, resetCode, newPassword, confirmPassword } = req.body;
+
+    if (!email || !resetCode || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'All fields are required'
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Passwords do not match'
+      });
+    }
+
+    const emailLower = email.toLowerCase();
+    const resetRef = db.collection('password_resets').doc(emailLower);
+    const resetDoc = await resetRef.get();
+
+    if (!resetDoc.exists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset code'
+      });
+    }
+
+    const resetData = resetDoc.data();
+
+    if (resetData.resetCode !== resetCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid reset code'
+      });
+    }
+
+    if (new Date() > new Date(resetData.resetExpiry)) {
+      await resetRef.delete();
+      return res.status(400).json({
+        success: false,
+        message: 'Reset code expired'
+      });
+    }
+
+    const corperQuery = await db.collection('corpers')
+      .where('email', '==', emailLower)
+      .get();
+
+    if (corperQuery.empty) {
+      return res.status(404).json({
+        success: false,
+        message: 'Corper not found'
+      });
+    }
+
+    const corperDoc = corperQuery.docs[0];
+    const hashedPassword = await hashPassword(newPassword);
+
+    await corperDoc.ref.update({
+      password: hashedPassword,
+      updatedAt: new Date().toISOString()
+    });
+
+    await resetRef.delete();
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset successful'
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
 module.exports = {
   signup,
   verifyEmail,
   login,
   resendCode,
-  checkStatus
+  checkStatus,
+  continueRegistration,
+  forgotPassword,
+  resetPassword
 };
