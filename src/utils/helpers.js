@@ -22,9 +22,14 @@ const generateToken = (stateCode, role = 'corper') => {
   );
 };
 
+const sanitizeDocId = (id) => {
+  return id.replace(/\//g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
+};
+
 module.exports = {
   generateCode,
   hashPassword,
   comparePassword,
-  generateToken
+  generateToken,
+  sanitizeDocId
 };

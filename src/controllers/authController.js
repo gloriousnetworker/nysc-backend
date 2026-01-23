@@ -43,6 +43,10 @@ const signup = async (req, res) => {
     }
 
     const emailLower = email.toLowerCase();
+    const stateCodeUpper = stateCode.toUpperCase();
+    
+    // Create a safe document ID from email (remove special characters)
+    const safeDocId = emailLower.replace(/[^a-zA-Z0-9]/g, '_');
 
     const existingEmail = await db.collection('corpers')
       .where('email', '==', emailLower)
@@ -56,7 +60,7 @@ const signup = async (req, res) => {
     }
 
     const existingStateCode = await db.collection('corpers')
-      .where('stateCode', '==', stateCode.toUpperCase())
+      .where('stateCode', '==', stateCodeUpper)
       .get();
 
     if (!existingStateCode.empty) {
@@ -76,7 +80,7 @@ const signup = async (req, res) => {
       lastName,
       email: emailLower,
       phone,
-      stateCode: stateCode.toUpperCase(),
+      stateCode: stateCodeUpper,
       servingState,
       localGovernment,
       ppa,
@@ -91,12 +95,13 @@ const signup = async (req, res) => {
       updatedAt: new Date().toISOString()
     };
 
-    await db.collection('pending_registrations').doc(emailLower).set(corperData);
+    // Save using email as document ID (sanitized)
+    await db.collection('pending_registrations').doc(safeDocId).set(corperData);
 
     const emailSent = await sendVerificationEmail(email, verificationCode, `${firstName} ${lastName}`);
 
     if (!emailSent) {
-      await db.collection('pending_registrations').doc(emailLower).delete();
+      await db.collection('pending_registrations').doc(safeDocId).delete();
       return res.status(500).json({
         success: false,
         message: 'Failed to send verification email'
@@ -108,7 +113,7 @@ const signup = async (req, res) => {
       message: 'Registration successful! Check email for verification code.',
       data: {
         email: emailLower,
-        stateCode: stateCode.toUpperCase()
+        stateCode: stateCodeUpper
       }
     });
 
@@ -135,7 +140,9 @@ const verifyEmail = async (req, res) => {
     }
 
     const emailLower = email.toLowerCase();
-    const pendingRef = db.collection('pending_registrations').doc(emailLower);
+    const safeDocId = emailLower.replace(/[^a-zA-Z0-9]/g, '_');
+    
+    const pendingRef = db.collection('pending_registrations').doc(safeDocId);
     const pendingDoc = await pendingRef.get();
 
     if (!pendingDoc.exists) {
@@ -170,7 +177,11 @@ const verifyEmail = async (req, res) => {
       verifiedAt: new Date().toISOString()
     };
 
-    await db.collection('corpers').doc(pendingData.stateCode).set(finalData);
+    // Use state code as document ID for corpers collection
+    // First clean up state code for use as document ID
+    const stateCodeDocId = pendingData.stateCode.replace(/\//g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
+    
+    await db.collection('corpers').doc(stateCodeDocId).set(finalData);
     await pendingRef.delete();
 
     const token = generateToken(pendingData.stateCode, 'corper');
@@ -190,7 +201,7 @@ const verifyEmail = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Verify email error:', error);
+    console.error('Verify email error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Server error during verification'
@@ -294,7 +305,9 @@ const resendCode = async (req, res) => {
     }
 
     const emailLower = email.toLowerCase();
-    const pendingRef = db.collection('pending_registrations').doc(emailLower);
+    const safeDocId = emailLower.replace(/[^a-zA-Z0-9]/g, '_');
+    
+    const pendingRef = db.collection('pending_registrations').doc(safeDocId);
     const pendingDoc = await pendingRef.get();
 
     if (!pendingDoc.exists) {
@@ -350,8 +363,9 @@ const checkStatus = async (req, res) => {
     }
 
     const emailLower = email.toLowerCase();
+    const safeDocId = emailLower.replace(/[^a-zA-Z0-9]/g, '_');
 
-    const pendingDoc = await db.collection('pending_registrations').doc(emailLower).get();
+    const pendingDoc = await db.collection('pending_registrations').doc(safeDocId).get();
     
     if (pendingDoc.exists) {
       const data = pendingDoc.data();
@@ -411,7 +425,9 @@ const continueRegistration = async (req, res) => {
     }
 
     const emailLower = email.toLowerCase();
-    const pendingRef = db.collection('pending_registrations').doc(emailLower);
+    const safeDocId = emailLower.replace(/[^a-zA-Z0-9]/g, '_');
+    
+    const pendingRef = db.collection('pending_registrations').doc(safeDocId);
     const pendingDoc = await pendingRef.get();
 
     if (!pendingDoc.exists) {
