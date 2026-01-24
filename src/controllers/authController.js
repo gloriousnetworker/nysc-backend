@@ -3,9 +3,23 @@ const {
   generateCode, 
   hashPassword, 
   comparePassword, 
-  generateToken
+  generateToken,
+  generateTOTPSecret,
+  verifyTOTPCode,
+  encryptSecret,
+  decryptSecret,
+  sanitizeDocId
 } = require('../utils/helpers');
-const { sendVerificationEmail } = require('../utils/emailService');
+const { 
+  sendVerificationEmail,
+  send2FAEmail,
+  sendPasswordResetEmail,
+  sendWelcomeEmail,
+  send2FASetupEmail,
+  send2FADisabledEmail,
+  sendBackupCodesEmail
+} = require('../utils/emailService');
+const QRCode = require('qrcode');
 
 console.log('✅ Auth Controller loaded successfully');
 
@@ -45,7 +59,6 @@ const signup = async (req, res) => {
     const emailLower = email.toLowerCase();
     const stateCodeUpper = stateCode.toUpperCase();
     
-    // Create a safe document ID from email (remove special characters)
     const safeDocId = emailLower.replace(/[^a-zA-Z0-9]/g, '_');
 
     const existingEmail = await db.collection('corpers')
@@ -91,11 +104,13 @@ const signup = async (req, res) => {
       isVerified: false,
       status: 'pending',
       registrationStep: 2,
+      twoFactorEnabled: false,
+      twoFactorSecret: null,
+      backupCodes: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
-    // Save using email as document ID (sanitized)
     await db.collection('pending_registrations').doc(safeDocId).set(corperData);
 
     const emailSent = await sendVerificationEmail(email, verificationCode, `${firstName} ${lastName}`);
@@ -177,14 +192,14 @@ const verifyEmail = async (req, res) => {
       verifiedAt: new Date().toISOString()
     };
 
-    // Use state code as document ID for corpers collection
-    // First clean up state code for use as document ID
-    const stateCodeDocId = pendingData.stateCode.replace(/\//g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
+    const stateCodeDocId = sanitizeDocId(pendingData.stateCode);
     
     await db.collection('corpers').doc(stateCodeDocId).set(finalData);
     await pendingRef.delete();
 
     const token = generateToken(pendingData.stateCode, 'corper');
+
+    await sendWelcomeEmail(email, `${pendingData.firstName} ${pendingData.lastName}`);
 
     res.status(200).json({
       success: true,
@@ -196,7 +211,8 @@ const verifyEmail = async (req, res) => {
           firstName: pendingData.firstName,
           lastName: pendingData.lastName,
           email: pendingData.email,
-          cdsGroup: pendingData.cdsGroup
+          cdsGroup: pendingData.cdsGroup,
+          twoFactorEnabled: false
         }
       }
     });
@@ -260,11 +276,148 @@ const login = async (req, res) => {
       });
     }
 
+    if (corperData.twoFactorEnabled) {
+      const tempToken = generateToken(corperData.stateCode, 'temp', '5m');
+      
+      await db.collection('temp_auth').doc(corperData.stateCode).set({
+        stateCode: corperData.stateCode,
+        tempToken,
+        requires2FA: true,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 5 * 60000).toISOString()
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Two-factor authentication required',
+        data: {
+          tempToken,
+          requires2FA: true,
+          stateCode: corperData.stateCode,
+          twoFactorEnabled: true
+        }
+      });
+    }
+
     const token = generateToken(corperData.stateCode, 'corper');
 
     res.status(200).json({
       success: true,
       message: 'Login successful',
+      data: {
+        token,
+        requires2FA: false,
+        corper: {
+          stateCode: corperData.stateCode,
+          firstName: corperData.firstName,
+          lastName: corperData.lastName,
+          fullName: `${corperData.firstName} ${corperData.lastName}`,
+          email: corperData.email,
+          phone: corperData.phone,
+          servingState: corperData.servingState,
+          localGovernment: corperData.localGovernment,
+          ppa: corperData.ppa,
+          cdsGroup: corperData.cdsGroup,
+          status: corperData.status,
+          twoFactorEnabled: corperData.twoFactorEnabled
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during login'
+    });
+  }
+};
+
+const verify2FA = async (req, res) => {
+  console.log('📥 Verify 2FA request:', req.body);
+
+  try {
+    const { stateCode, twoFactorCode, tempToken } = req.body;
+
+    if (!stateCode || !twoFactorCode || !tempToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'State code, 2FA code and temporary token required'
+      });
+    }
+
+    const tempAuthRef = db.collection('temp_auth').doc(stateCode);
+    const tempAuthDoc = await tempAuthRef.get();
+
+    if (!tempAuthDoc.exists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired temporary token'
+      });
+    }
+
+    const tempAuthData = tempAuthDoc.data();
+
+    if (tempAuthData.tempToken !== tempToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid temporary token'
+      });
+    }
+
+    if (new Date() > new Date(tempAuthData.expiresAt)) {
+      await tempAuthRef.delete();
+      return res.status(400).json({
+        success: false,
+        message: 'Temporary token expired'
+      });
+    }
+
+    const stateCodeDocId = sanitizeDocId(stateCode);
+    const corperDoc = await db.collection('corpers').doc(stateCodeDocId).get();
+
+    if (!corperDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Corper not found'
+      });
+    }
+
+    const corperData = corperDoc.data();
+
+    if (!corperData.twoFactorEnabled || !corperData.twoFactorSecret) {
+      return res.status(400).json({
+        success: false,
+        message: 'Two-factor authentication not enabled'
+      });
+    }
+
+    const decryptedSecret = decryptSecret(corperData.twoFactorSecret);
+    const isValid = verifyTOTPCode(decryptedSecret, twoFactorCode);
+
+    if (!isValid) {
+      const isValidBackupCode = corperData.backupCodes && 
+        corperData.backupCodes.includes(twoFactorCode);
+      
+      if (isValidBackupCode) {
+        await corperDoc.ref.update({
+          backupCodes: corperData.backupCodes.filter(code => code !== twoFactorCode),
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid two-factor code'
+        });
+      }
+    }
+
+    await tempAuthRef.delete();
+
+    const token = generateToken(corperData.stateCode, 'corper');
+
+    res.status(200).json({
+      success: true,
+      message: 'Two-factor authentication successful',
       data: {
         token,
         corper: {
@@ -278,15 +431,419 @@ const login = async (req, res) => {
           localGovernment: corperData.localGovernment,
           ppa: corperData.ppa,
           cdsGroup: corperData.cdsGroup,
-          status: corperData.status
+          status: corperData.status,
+          twoFactorEnabled: corperData.twoFactorEnabled
         }
       }
     });
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('2FA verification error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error during login'
+      message: 'Server error during 2FA verification'
+    });
+  }
+};
+
+const setup2FA = async (req, res) => {
+  console.log('📥 Setup 2FA request:', req.user);
+
+  try {
+    const { stateCode } = req.user;
+
+    if (!stateCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'State code required'
+      });
+    }
+
+    const stateCodeDocId = sanitizeDocId(stateCode);
+    const corperDoc = await db.collection('corpers').doc(stateCodeDocId).get();
+
+    if (!corperDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Corper not found'
+      });
+    }
+
+    const corperData = corperDoc.data();
+
+    if (corperData.twoFactorEnabled) {
+      return res.status(400).json({
+        success: false,
+        message: 'Two-factor authentication already enabled'
+      });
+    }
+
+    const secret = generateTOTPSecret();
+    const encryptedSecret = encryptSecret(secret);
+    
+    const backupCodes = Array.from({ length: 8 }, () => 
+      Math.floor(100000 + Math.random() * 900000).toString()
+    );
+
+    const otpauthUrl = `otpauth://totp/${encodeURIComponent(process.env.APP_NAME)}:${encodeURIComponent(corperData.email)}?secret=${secret}&issuer=${encodeURIComponent(process.env.TOTP_ISSUER)}&algorithm=SHA1&digits=6&period=30`;
+    
+    const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+
+    await corperDoc.ref.update({
+      twoFactorSecret: encryptedSecret,
+      backupCodes,
+      updatedAt: new Date().toISOString()
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Two-factor authentication setup initiated',
+      data: {
+        secret,
+        qrCode: qrCodeDataUrl,
+        backupCodes,
+        stateCode: corperData.stateCode,
+        email: corperData.email
+      }
+    });
+  } catch (error) {
+    console.error('2FA setup error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during 2FA setup'
+    });
+  }
+};
+
+const verify2FASetup = async (req, res) => {
+  console.log('📥 Verify 2FA setup request:', req.body);
+
+  try {
+    const { stateCode, twoFactorCode } = req.body;
+
+    if (!stateCode || !twoFactorCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'State code and 2FA code required'
+      });
+    }
+
+    const stateCodeDocId = sanitizeDocId(stateCode);
+    const corperDoc = await db.collection('corpers').doc(stateCodeDocId).get();
+
+    if (!corperDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Corper not found'
+      });
+    }
+
+    const corperData = corperDoc.data();
+
+    if (!corperData.twoFactorSecret) {
+      return res.status(400).json({
+        success: false,
+        message: 'Two-factor authentication not setup'
+      });
+    }
+
+    const decryptedSecret = decryptSecret(corperData.twoFactorSecret);
+    const isValid = verifyTOTPCode(decryptedSecret, twoFactorCode);
+
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid two-factor code'
+      });
+    }
+
+    await corperDoc.ref.update({
+      twoFactorEnabled: true,
+      updatedAt: new Date().toISOString()
+    });
+
+    await send2FASetupEmail(corperData.email, `${corperData.firstName} ${corperData.lastName}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Two-factor authentication enabled successfully',
+      data: {
+        stateCode: corperData.stateCode,
+        twoFactorEnabled: true
+      }
+    });
+  } catch (error) {
+    console.error('2FA verification setup error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during 2FA setup verification'
+    });
+  }
+};
+
+const disable2FA = async (req, res) => {
+  console.log('📥 Disable 2FA request:', req.user);
+
+  try {
+    const { stateCode } = req.user;
+    const { twoFactorCode } = req.body;
+
+    if (!stateCode || !twoFactorCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'State code and 2FA code required'
+      });
+    }
+
+    const stateCodeDocId = sanitizeDocId(stateCode);
+    const corperDoc = await db.collection('corpers').doc(stateCodeDocId).get();
+
+    if (!corperDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Corper not found'
+      });
+    }
+
+    const corperData = corperDoc.data();
+
+    if (!corperData.twoFactorEnabled) {
+      return res.status(400).json({
+        success: false,
+        message: 'Two-factor authentication not enabled'
+      });
+    }
+
+    const decryptedSecret = decryptSecret(corperData.twoFactorSecret);
+    const isValid = verifyTOTPCode(decryptedSecret, twoFactorCode);
+
+    if (!isValid) {
+      const isValidBackupCode = corperData.backupCodes && 
+        corperData.backupCodes.includes(twoFactorCode);
+      
+      if (!isValidBackupCode) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid two-factor code'
+        });
+      }
+    }
+
+    await corperDoc.ref.update({
+      twoFactorEnabled: false,
+      twoFactorSecret: null,
+      backupCodes: [],
+      updatedAt: new Date().toISOString()
+    });
+
+    await send2FADisabledEmail(corperData.email, `${corperData.firstName} ${corperData.lastName}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Two-factor authentication disabled successfully',
+      data: {
+        stateCode: corperData.stateCode,
+        twoFactorEnabled: false
+      }
+    });
+  } catch (error) {
+    console.error('2FA disable error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during 2FA disable'
+    });
+  }
+};
+
+const generateBackupCodes = async (req, res) => {
+  console.log('📥 Generate backup codes request:', req.user);
+
+  try {
+    const { stateCode } = req.user;
+
+    if (!stateCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'State code required'
+      });
+    }
+
+    const stateCodeDocId = sanitizeDocId(stateCode);
+    const corperDoc = await db.collection('corpers').doc(stateCodeDocId).get();
+
+    if (!corperDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Corper not found'
+      });
+    }
+
+    const corperData = corperDoc.data();
+
+    if (!corperData.twoFactorEnabled) {
+      return res.status(400).json({
+        success: false,
+        message: 'Two-factor authentication not enabled'
+      });
+    }
+
+    const backupCodes = Array.from({ length: 8 }, () => 
+      Math.floor(100000 + Math.random() * 900000).toString()
+    );
+
+    await corperDoc.ref.update({
+      backupCodes,
+      updatedAt: new Date().toISOString()
+    });
+
+    await sendBackupCodesEmail(corperData.email, `${corperData.firstName} ${corperData.lastName}`, backupCodes);
+
+    res.status(200).json({
+      success: true,
+      message: 'Backup codes generated successfully',
+      data: {
+        backupCodes,
+        stateCode: corperData.stateCode
+      }
+    });
+  } catch (error) {
+    console.error('Backup codes generation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during backup codes generation'
+    });
+  }
+};
+
+const send2FACode = async (req, res) => {
+  console.log('📥 Send 2FA code request:', req.body);
+
+  try {
+    const { stateCode } = req.body;
+
+    if (!stateCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'State code required'
+      });
+    }
+
+    const stateCodeDocId = sanitizeDocId(stateCode);
+    const corperDoc = await db.collection('corpers').doc(stateCodeDocId).get();
+
+    if (!corperDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Corper not found'
+      });
+    }
+
+    const corperData = corperDoc.data();
+
+    if (!corperData.twoFactorEnabled) {
+      return res.status(400).json({
+        success: false,
+        message: 'Two-factor authentication not enabled'
+      });
+    }
+
+    const twoFactorCode = generateCode();
+    
+    await db.collection('temp_2fa_codes').doc(stateCode).set({
+      stateCode,
+      code: twoFactorCode,
+      expiresAt: new Date(Date.now() + 5 * 60000).toISOString(),
+      createdAt: new Date().toISOString()
+    });
+
+    const emailSent = await send2FAEmail(corperData.email, twoFactorCode, `${corperData.firstName} ${corperData.lastName}`);
+
+    if (!emailSent) {
+      await db.collection('temp_2fa_codes').doc(stateCode).delete();
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send 2FA code'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Two-factor authentication code sent to email'
+    });
+  } catch (error) {
+    console.error('Send 2FA code error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during 2FA code sending'
+    });
+  }
+};
+
+const verifyEmail2FA = async (req, res) => {
+  console.log('📥 Verify email 2FA request:', req.body);
+
+  try {
+    const { stateCode, twoFactorCode } = req.body;
+
+    if (!stateCode || !twoFactorCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'State code and 2FA code required'
+      });
+    }
+
+    const temp2FARef = db.collection('temp_2fa_codes').doc(stateCode);
+    const temp2FADoc = await temp2FARef.get();
+
+    if (!temp2FADoc.exists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired 2FA code'
+      });
+    }
+
+    const temp2FAData = temp2FADoc.data();
+
+    if (temp2FAData.code !== twoFactorCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid two-factor code'
+      });
+    }
+
+    if (new Date() > new Date(temp2FAData.expiresAt)) {
+      await temp2FARef.delete();
+      return res.status(400).json({
+        success: false,
+        message: 'Two-factor code expired'
+      });
+    }
+
+    await temp2FARef.delete();
+
+    const tempToken = generateToken(stateCode, 'temp', '5m');
+    
+    await db.collection('temp_auth').doc(stateCode).set({
+      stateCode,
+      tempToken,
+      requires2FA: true,
+      email2FACodeUsed: true,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 5 * 60000).toISOString()
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Email two-factor authentication successful',
+      data: {
+        tempToken,
+        stateCode
+      }
+    });
+  } catch (error) {
+    console.error('Email 2FA verification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during email 2FA verification'
     });
   }
 };
@@ -376,7 +933,8 @@ const checkStatus = async (req, res) => {
           email: data.email,
           stateCode: data.stateCode,
           name: `${data.firstName} ${data.lastName}`,
-          step: data.registrationStep || 2
+          step: data.registrationStep || 2,
+          twoFactorEnabled: data.twoFactorEnabled
         }
       });
     }
@@ -393,7 +951,8 @@ const checkStatus = async (req, res) => {
           status: 'verified',
           email: data.email,
           stateCode: data.stateCode,
-          name: `${data.firstName} ${data.lastName}`
+          name: `${data.firstName} ${data.lastName}`,
+          twoFactorEnabled: data.twoFactorEnabled
         }
       });
     }
@@ -511,7 +1070,7 @@ const forgotPassword = async (req, res) => {
       createdAt: new Date().toISOString()
     });
 
-    const emailSent = await sendVerificationEmail(email, resetCode, `${corperData.firstName} ${corperData.lastName}`);
+    const emailSent = await sendPasswordResetEmail(email, resetCode, `${corperData.firstName} ${corperData.lastName}`);
 
     if (!emailSent) {
       return res.status(500).json({
@@ -619,6 +1178,13 @@ module.exports = {
   signup,
   verifyEmail,
   login,
+  verify2FA,
+  setup2FA,
+  verify2FASetup,
+  disable2FA,
+  generateBackupCodes,
+  send2FACode,
+  verifyEmail2FA,
   resendCode,
   checkStatus,
   continueRegistration,
