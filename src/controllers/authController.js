@@ -22,16 +22,44 @@ const {
 const QRCode = require('qrcode');
 
 const setAuthCookie = (res, token) => {
-  res.cookie('nysc_token', token, {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isVercel = process.env.VERCEL === '1' || isProduction;
+  
+  const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000
-  });
+    secure: isVercel,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: '/'
+  };
+  
+  if (isVercel) {
+    cookieOptions.sameSite = 'none';
+    cookieOptions.domain = '.vercel.app';
+  } else {
+    cookieOptions.sameSite = 'lax';
+  }
+  
+  res.cookie('nysc_token', token, cookieOptions);
 };
 
 const clearAuthCookie = (res) => {
-  res.clearCookie('nysc_token');
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isVercel = process.env.VERCEL === '1' || isProduction;
+  
+  const cookieOptions = {
+    httpOnly: true,
+    secure: isVercel,
+    path: '/'
+  };
+  
+  if (isVercel) {
+    cookieOptions.sameSite = 'none';
+    cookieOptions.domain = '.vercel.app';
+  } else {
+    cookieOptions.sameSite = 'lax';
+  }
+  
+  res.clearCookie('nysc_token', cookieOptions);
 };
 
 const signup = async (req, res) => {
