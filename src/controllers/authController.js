@@ -23,9 +23,20 @@ const QRCode = require('qrcode');
 
 console.log('✅ Auth Controller loaded successfully');
 
-const signup = async (req, res) => {
-  console.log('📥 Signup request received:', req.body);
+const setAuthCookie = (res, token) => {
+  res.cookie('nysc_token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+};
 
+const clearAuthCookie = (res) => {
+  res.clearCookie('nysc_token');
+};
+
+const signup = async (req, res) => {
   try {
     const {
       firstName,
@@ -131,7 +142,6 @@ const signup = async (req, res) => {
         stateCode: stateCodeUpper
       }
     });
-
   } catch (error) {
     console.error('Signup error:', error);
     res.status(500).json({
@@ -142,8 +152,6 @@ const signup = async (req, res) => {
 };
 
 const verifyEmail = async (req, res) => {
-  console.log('📥 Verify email request:', req.body);
-
   try {
     const { email, verificationCode } = req.body;
 
@@ -198,6 +206,7 @@ const verifyEmail = async (req, res) => {
     await pendingRef.delete();
 
     const token = generateToken(pendingData.stateCode, 'corper');
+    setAuthCookie(res, token);
 
     await sendWelcomeEmail(email, `${pendingData.firstName} ${pendingData.lastName}`);
 
@@ -205,7 +214,6 @@ const verifyEmail = async (req, res) => {
       success: true,
       message: 'Email verified successfully!',
       data: {
-        token,
         corper: {
           stateCode: pendingData.stateCode,
           firstName: pendingData.firstName,
@@ -226,8 +234,6 @@ const verifyEmail = async (req, res) => {
 };
 
 const login = async (req, res) => {
-  console.log('📥 Login request:', req.body);
-
   try {
     const { identifier, password } = req.body;
 
@@ -293,7 +299,6 @@ const login = async (req, res) => {
         success: true,
         message: 'Two-factor authentication required',
         data: {
-          tempToken,
           requires2FA: true,
           stateCode: corperData.stateCode,
           twoFactorEnabled: true
@@ -302,12 +307,12 @@ const login = async (req, res) => {
     }
 
     const token = generateToken(corperData.stateCode, 'corper');
+    setAuthCookie(res, token);
 
     res.status(200).json({
       success: true,
       message: 'Login successful',
       data: {
-        token,
         requires2FA: false,
         corper: {
           stateCode: corperData.stateCode,
@@ -335,8 +340,6 @@ const login = async (req, res) => {
 };
 
 const verify2FA = async (req, res) => {
-  console.log('📥 Verify 2FA request:', req.body);
-
   try {
     const { stateCode, twoFactorCode, tempToken } = req.body;
 
@@ -417,12 +420,12 @@ const verify2FA = async (req, res) => {
     await tempAuthRef.delete();
 
     const token = generateToken(corperData.stateCode, 'corper');
+    setAuthCookie(res, token);
 
     res.status(200).json({
       success: true,
       message: 'Two-factor authentication successful',
       data: {
-        token,
         corper: {
           stateCode: corperData.stateCode,
           firstName: corperData.firstName,
@@ -449,8 +452,6 @@ const verify2FA = async (req, res) => {
 };
 
 const setup2FA = async (req, res) => {
-  console.log('📥 Setup 2FA request:', req.user);
-
   try {
     const { stateCode } = req.user;
 
@@ -518,8 +519,6 @@ const setup2FA = async (req, res) => {
 };
 
 const verify2FASetup = async (req, res) => {
-  console.log('📥 Verify 2FA setup request:', req.body);
-
   try {
     const { stateCode, twoFactorCode } = req.body;
 
@@ -584,8 +583,6 @@ const verify2FASetup = async (req, res) => {
 };
 
 const disable2FA = async (req, res) => {
-  console.log('📥 Disable 2FA request:', req.user);
-
   try {
     const { stateCode } = req.user;
     const { twoFactorCode } = req.body;
@@ -658,8 +655,6 @@ const disable2FA = async (req, res) => {
 };
 
 const generateBackupCodes = async (req, res) => {
-  console.log('📥 Generate backup codes request:', req.user);
-
   try {
     const { stateCode } = req.user;
 
@@ -718,8 +713,6 @@ const generateBackupCodes = async (req, res) => {
 };
 
 const send2FACode = async (req, res) => {
-  console.log('📥 Send 2FA code request:', req.body);
-
   try {
     const { stateCode } = req.body;
 
@@ -783,8 +776,6 @@ const send2FACode = async (req, res) => {
 };
 
 const verifyEmail2FA = async (req, res) => {
-  console.log('📥 Verify email 2FA request:', req.body);
-
   try {
     const { stateCode, twoFactorCode } = req.body;
 
@@ -855,8 +846,6 @@ const verifyEmail2FA = async (req, res) => {
 };
 
 const resendCode = async (req, res) => {
-  console.log('📥 Resend code request:', req.body);
-
   try {
     const { email } = req.body;
 
@@ -913,8 +902,6 @@ const resendCode = async (req, res) => {
 };
 
 const checkStatus = async (req, res) => {
-  console.log('📥 Check status request:', req.params);
-
   try {
     const { email } = req.params;
 
@@ -977,8 +964,6 @@ const checkStatus = async (req, res) => {
 };
 
 const continueRegistration = async (req, res) => {
-  console.log('📥 Continue registration:', req.body);
-
   try {
     const { email } = req.body;
 
@@ -1039,8 +1024,6 @@ const continueRegistration = async (req, res) => {
 };
 
 const forgotPassword = async (req, res) => {
-  console.log('📥 Forgot password:', req.body);
-
   try {
     const { email } = req.body;
 
@@ -1099,8 +1082,6 @@ const forgotPassword = async (req, res) => {
 };
 
 const resetPassword = async (req, res) => {
-  console.log('📥 Reset password:', req.body);
-
   try {
     const { email, resetCode, newPassword, confirmPassword } = req.body;
 
@@ -1180,6 +1161,74 @@ const resetPassword = async (req, res) => {
   }
 };
 
+const getMe = async (req, res) => {
+  try {
+    const { stateCode } = req.user;
+
+    if (!stateCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'State code required'
+      });
+    }
+
+    const stateCodeDocId = sanitizeDocId(stateCode);
+    const corperDoc = await db.collection('corpers').doc(stateCodeDocId).get();
+
+    if (!corperDoc.exists) {
+      return res.status(404).json({
+        success: false,
+        message: 'Corper not found'
+      });
+    }
+
+    const corperData = corperDoc.data();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        corper: {
+          stateCode: corperData.stateCode,
+          firstName: corperData.firstName,
+          lastName: corperData.lastName,
+          fullName: `${corperData.firstName} ${corperData.lastName}`,
+          email: corperData.email,
+          phone: corperData.phone,
+          servingState: corperData.servingState,
+          localGovernment: corperData.localGovernment,
+          ppa: corperData.ppa,
+          cdsGroup: corperData.cdsGroup,
+          status: corperData.status,
+          twoFactorEnabled: corperData.twoFactorEnabled
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get me error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+};
+
+const logout = async (req, res) => {
+  try {
+    clearAuthCookie(res);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during logout'
+    });
+  }
+};
+
 module.exports = {
   signup,
   verifyEmail,
@@ -1195,5 +1244,7 @@ module.exports = {
   checkStatus,
   continueRegistration,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  getMe,
+  logout
 };
