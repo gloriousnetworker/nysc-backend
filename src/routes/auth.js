@@ -16,13 +16,17 @@ const {
   checkStatus,
   continueRegistration,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  getMe,
+  logout
 } = require('../controllers/authController');
 
 router.post('/signup', signup);
 router.post('/verify', verifyEmail);
 router.post('/login', login);
 router.post('/verify-2fa', verify2FA);
+router.get('/me', authMiddleware, getMe);
+router.post('/logout', logout);
 router.post('/setup-2fa', authMiddleware, setup2FA);
 router.post('/verify-2fa-setup', verify2FASetup);
 router.post('/disable-2fa', authMiddleware, disable2FA);
