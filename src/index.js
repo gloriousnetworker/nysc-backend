@@ -6,10 +6,25 @@ const authRoutes = require('./routes/auth');
 
 const app = express();
 
+const allowedOrigins = [
+  'https://nysc-corpers-cds-attendance-app.vercel.app',
+  'http://localhost:3000'
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  origin: function(origin, callback) {
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+  exposedHeaders: ['set-cookie']
 }));
+
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -19,7 +34,8 @@ app.get('/', (req, res) => {
     success: true,
     message: 'NYSC CDS Backend API 🚀',
     version: '1.0.0',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV
   });
 });
 
