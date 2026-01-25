@@ -279,7 +279,9 @@ const login = async (req, res) => {
     if (corperData.twoFactorEnabled) {
       const tempToken = generateToken(corperData.stateCode, 'temp', '5m');
       
-      await db.collection('temp_auth').doc(corperData.stateCode).set({
+      const sanitizedStateCode = sanitizeDocId(corperData.stateCode);
+      
+      await db.collection('temp_auth').doc(sanitizedStateCode).set({
         stateCode: corperData.stateCode,
         tempToken,
         requires2FA: true,
@@ -345,7 +347,8 @@ const verify2FA = async (req, res) => {
       });
     }
 
-    const tempAuthRef = db.collection('temp_auth').doc(stateCode);
+    const sanitizedStateCode = sanitizeDocId(stateCode);
+    const tempAuthRef = db.collection('temp_auth').doc(sanitizedStateCode);
     const tempAuthDoc = await tempAuthRef.get();
 
     if (!tempAuthDoc.exists) {
@@ -748,7 +751,8 @@ const send2FACode = async (req, res) => {
 
     const twoFactorCode = generateCode();
     
-    await db.collection('temp_2fa_codes').doc(stateCode).set({
+    const sanitizedStateCode = sanitizeDocId(stateCode);
+    await db.collection('temp_2fa_codes').doc(sanitizedStateCode).set({
       stateCode,
       code: twoFactorCode,
       expiresAt: new Date(Date.now() + 5 * 60000).toISOString(),
@@ -758,7 +762,7 @@ const send2FACode = async (req, res) => {
     const emailSent = await send2FAEmail(corperData.email, twoFactorCode, `${corperData.firstName} ${corperData.lastName}`);
 
     if (!emailSent) {
-      await db.collection('temp_2fa_codes').doc(stateCode).delete();
+      await db.collection('temp_2fa_codes').doc(sanitizedStateCode).delete();
       return res.status(500).json({
         success: false,
         message: 'Failed to send 2FA code'
@@ -791,7 +795,8 @@ const verifyEmail2FA = async (req, res) => {
       });
     }
 
-    const temp2FARef = db.collection('temp_2fa_codes').doc(stateCode);
+    const sanitizedStateCode = sanitizeDocId(stateCode);
+    const temp2FARef = db.collection('temp_2fa_codes').doc(sanitizedStateCode);
     const temp2FADoc = await temp2FARef.get();
 
     if (!temp2FADoc.exists) {
@@ -822,7 +827,8 @@ const verifyEmail2FA = async (req, res) => {
 
     const tempToken = generateToken(stateCode, 'temp', '5m');
     
-    await db.collection('temp_auth').doc(stateCode).set({
+    const sanitizedStateCodeForAuth = sanitizeDocId(stateCode);
+    await db.collection('temp_auth').doc(sanitizedStateCodeForAuth).set({
       stateCode,
       tempToken,
       requires2FA: true,
