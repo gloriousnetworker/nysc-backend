@@ -21,8 +21,6 @@ const {
 } = require('../utils/emailService');
 const QRCode = require('qrcode');
 
-console.log('✅ Auth Controller loaded successfully');
-
 const setAuthCookie = (res, token) => {
   res.cookie('nysc_token', token, {
     httpOnly: true,
@@ -299,6 +297,7 @@ const login = async (req, res) => {
         success: true,
         message: 'Two-factor authentication required',
         data: {
+          tempToken,
           requires2FA: true,
           stateCode: corperData.stateCode,
           twoFactorEnabled: true
