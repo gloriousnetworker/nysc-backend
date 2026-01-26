@@ -137,6 +137,7 @@ const sendBackupCodesEmail = async (email, name, backupCodes) => {
 };
 
 const generateVerificationTemplate = (name, code) => {
+  const logoUrl = process.env.LOGO_URL || 'https://via.placeholder.com/90';
   return `
     <!DOCTYPE html>
     <html>
@@ -152,8 +153,8 @@ const generateVerificationTemplate = (name, code) => {
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;">
               <tr>
                 <td style="background-color:#008753;padding:30px;text-align:center;">
-                  <img src="${process.env.LOGO_URL}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:10px;">
-                  <h1 style="color:#ffffff;margin:0;font-size:24px;">${process.env.APP_NAME}</h1>
+                  <img src="${logoUrl}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:5px;">
+                  <h1 style="color:#ffffff;margin:0;font-size:24px;">${process.env.APP_NAME || 'NYSC CDS Portal'}</h1>
                 </td>
               </tr>
               <tr>
@@ -195,6 +196,7 @@ const generateVerificationTemplate = (name, code) => {
 };
 
 const generate2FATemplate = (name, code) => {
+  const logoUrl = process.env.LOGO_URL || 'https://via.placeholder.com/90';
   return `
     <!DOCTYPE html>
     <html>
@@ -210,7 +212,7 @@ const generate2FATemplate = (name, code) => {
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;">
               <tr>
                 <td style="background-color:#4a00e0;padding:30px;text-align:center;">
-                  <img src="${process.env.LOGO_URL}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:10px;">
+                  <img src="${logoUrl}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:5px;">
                   <h1 style="color:#ffffff;margin:0;font-size:24px;">Two-Factor Authentication</h1>
                 </td>
               </tr>
@@ -243,7 +245,7 @@ const generate2FATemplate = (name, code) => {
               </tr>
               <tr>
                 <td style="background-color:#f8f8f8;padding:20px;text-align:center;font-size:12px;color:#777777;">
-                  <p style="margin:0;">${process.env.APP_NAME}</p>
+                  <p style="margin:0;">${process.env.APP_NAME || 'NYSC CDS Portal'}</p>
                   <p style="margin:5px 0 0 0;">For security reasons, never share this code</p>
                 </td>
               </tr>
@@ -257,6 +259,7 @@ const generate2FATemplate = (name, code) => {
 };
 
 const generatePasswordResetTemplate = (name, code) => {
+  const logoUrl = process.env.LOGO_URL || 'https://via.placeholder.com/90';
   return `
     <!DOCTYPE html>
     <html>
@@ -272,7 +275,7 @@ const generatePasswordResetTemplate = (name, code) => {
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;">
               <tr>
                 <td style="background-color:#d32f2f;padding:30px;text-align:center;">
-                  <img src="${process.env.LOGO_URL}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:10px;">
+                  <img src="${logoUrl}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:5px;">
                   <h1 style="color:#ffffff;margin:0;font-size:24px;">Password Reset Request</h1>
                 </td>
               </tr>
@@ -306,8 +309,8 @@ const generatePasswordResetTemplate = (name, code) => {
               </tr>
               <tr>
                 <td style="background-color:#f8f8f8;padding:20px;text-align:center;font-size:12px;color:#777777;">
-                  <p style="margin:0;">${process.env.APP_NAME}</p>
-                  <p style="margin:5px 0 0 0;">Need help? Contact: ${process.env.SUPPORT_EMAIL}</p>
+                  <p style="margin:0;">${process.env.APP_NAME || 'NYSC CDS Portal'}</p>
+                  <p style="margin:5px 0 0 0;">Need help? Contact: ${process.env.SUPPORT_EMAIL || 'support@nysccds.com'}</p>
                 </td>
               </tr>
             </table>
@@ -320,6 +323,7 @@ const generatePasswordResetTemplate = (name, code) => {
 };
 
 const generateWelcomeTemplate = (name) => {
+  const logoUrl = process.env.LOGO_URL || 'https://via.placeholder.com/90';
   return `
     <!DOCTYPE html>
     <html>
@@ -335,7 +339,7 @@ const generateWelcomeTemplate = (name) => {
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;">
               <tr>
                 <td style="background:linear-gradient(135deg, #008753, #00c853);padding:30px;text-align:center;">
-                  <img src="${process.env.LOGO_URL}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:10px;">
+                  <img src="${logoUrl}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:5px;">
                   <h1 style="color:#ffffff;margin:0;font-size:24px;">Welcome to NYSC CDS Portal!</h1>
                 </td>
               </tr>
@@ -357,7 +361,7 @@ const generateWelcomeTemplate = (name) => {
 
                   <div style="background-color:#e3f2fd;border:1px solid #bbdefb;border-radius:8px;padding:15px;margin:20px 0;">
                     <p style="margin:0;color:#1565c0;">
-                      <strong>📱 Get Started:</strong> Download our mobile app or visit ${process.env.APP_URL}
+                      <strong>📱 Get Started:</strong> Download our mobile app or visit ${process.env.APP_URL || 'https://nysccds.com'}
                     </p>
                   </div>
 
@@ -369,7 +373,7 @@ const generateWelcomeTemplate = (name) => {
               </tr>
               <tr>
                 <td style="background-color:#f8f8f8;padding:20px;text-align:center;font-size:12px;color:#777777;">
-                  <p style="margin:0;">${process.env.APP_NAME}</p>
+                  <p style="margin:0;">${process.env.APP_NAME || 'NYSC CDS Portal'}</p>
                   <p style="margin:5px 0 0 0;">Serving the nation with pride</p>
                 </td>
               </tr>
@@ -383,6 +387,7 @@ const generateWelcomeTemplate = (name) => {
 };
 
 const generate2FASetupTemplate = (name) => {
+  const logoUrl = process.env.LOGO_URL || 'https://via.placeholder.com/90';
   return `
     <!DOCTYPE html>
     <html>
@@ -398,7 +403,7 @@ const generate2FASetupTemplate = (name) => {
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;">
               <tr>
                 <td style="background:linear-gradient(135deg, #4a00e0, #8e2de2);padding:30px;text-align:center;">
-                  <img src="${process.env.LOGO_URL}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:10px;">
+                  <img src="${logoUrl}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:5px;">
                   <h1 style="color:#ffffff;margin:0;font-size:24px;">Two-Factor Authentication Enabled</h1>
                 </td>
               </tr>
@@ -438,7 +443,7 @@ const generate2FASetupTemplate = (name) => {
               </tr>
               <tr>
                 <td style="background-color:#f8f8f8;padding:20px;text-align:center;font-size:12px;color:#777777;">
-                  <p style="margin:0;">${process.env.APP_NAME}</p>
+                  <p style="margin:0;">${process.env.APP_NAME || 'NYSC CDS Portal'}</p>
                   <p style="margin:5px 0 0 0;">Security is our priority</p>
                 </td>
               </tr>
@@ -452,6 +457,7 @@ const generate2FASetupTemplate = (name) => {
 };
 
 const generate2FADisabledTemplate = (name) => {
+  const logoUrl = process.env.LOGO_URL || 'https://via.placeholder.com/90';
   return `
     <!DOCTYPE html>
     <html>
@@ -467,7 +473,7 @@ const generate2FADisabledTemplate = (name) => {
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;">
               <tr>
                 <td style="background:linear-gradient(135deg, #ff6b6b, #ff8e53);padding:30px;text-align:center;">
-                  <img src="${process.env.LOGO_URL}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:10px;">
+                  <img src="${logoUrl}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:5px;">
                   <h1 style="color:#ffffff;margin:0;font-size:24px;">Two-Factor Authentication Disabled</h1>
                 </td>
               </tr>
@@ -496,7 +502,7 @@ const generate2FADisabledTemplate = (name) => {
                   <p>If you did not disable 2FA, please secure your account immediately.</p>
 
                   <div style="text-align:center;margin:30px 0;">
-                    <a href="${process.env.APP_URL}/security" style="background-color:#008753;color:white;padding:12px 30px;text-decoration:none;border-radius:5px;font-weight:bold;display:inline-block;">
+                    <a href="${process.env.APP_URL || 'https://nysccds.com'}/security" style="background-color:#008753;color:white;padding:12px 30px;text-decoration:none;border-radius:5px;font-weight:bold;display:inline-block;">
                       Review Security Settings
                     </a>
                   </div>
@@ -509,8 +515,8 @@ const generate2FADisabledTemplate = (name) => {
               </tr>
               <tr>
                 <td style="background-color:#f8f8f8;padding:20px;text-align:center;font-size:12px;color:#777777;">
-                  <p style="margin:0;">${process.env.APP_NAME}</p>
-                  <p style="margin:5px 0 0 0;">For security concerns: ${process.env.SUPPORT_EMAIL}</p>
+                  <p style="margin:0;">${process.env.APP_NAME || 'NYSC CDS Portal'}</p>
+                  <p style="margin:5px 0 0 0;">For security concerns: ${process.env.SUPPORT_EMAIL || 'security@nysccds.com'}</p>
                 </td>
               </tr>
             </table>
@@ -523,6 +529,7 @@ const generate2FADisabledTemplate = (name) => {
 };
 
 const generateBackupCodesTemplate = (name, backupCodes) => {
+  const logoUrl = process.env.LOGO_URL || 'https://via.placeholder.com/90';
   const codesHtml = backupCodes.map((code, index) => `
     <div style="background:#f5f5f5;padding:10px;margin:5px;border-radius:4px;font-family:monospace;font-size:16px;text-align:center;">
       ${code}
@@ -544,7 +551,7 @@ const generateBackupCodesTemplate = (name, backupCodes) => {
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;">
               <tr>
                 <td style="background:linear-gradient(135deg, #37474f, #546e7a);padding:30px;text-align:center;">
-                  <img src="${process.env.LOGO_URL}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:10px;">
+                  <img src="${logoUrl}" alt="NYSC Logo" width="90" height="90" style="display:block;margin:0 auto 15px auto;border-radius:50%;background:#ffffff;padding:5px;">
                   <h1 style="color:#ffffff;margin:0;font-size:24px;">Your Backup Codes</h1>
                 </td>
               </tr>
@@ -586,7 +593,7 @@ const generateBackupCodesTemplate = (name, backupCodes) => {
               </tr>
               <tr>
                 <td style="background-color:#263238;padding:20px;text-align:center;font-size:12px;color:#cfd8dc;">
-                  <p style="margin:0;">${process.env.APP_NAME} - Security Center</p>
+                  <p style="margin:0;">${process.env.APP_NAME || 'NYSC CDS Portal'} - Security Center</p>
                   <p style="margin:5px 0 0 0;">These codes provide emergency access to your account</p>
                 </td>
               </tr>

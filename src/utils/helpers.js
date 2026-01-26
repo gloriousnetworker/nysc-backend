@@ -69,6 +69,11 @@ const sanitizeDocId = (id) => {
   return id.replace(/\//g, '_').replace(/[^a-zA-Z0-9_-]/g, '');
 };
 
+const validateStateCodeFormat = (stateCode) => {
+  const pattern = /^[A-Z]{2}\/\d{2}[A-Z]?\/\d{4}$/i;
+  return pattern.test(stateCode);
+};
+
 module.exports = {
   generateCode,
   hashPassword,
@@ -78,5 +83,6 @@ module.exports = {
   generateTOTPSecret,
   verifyTOTPCode,
   encryptSecret,
-  decryptSecret
+  decryptSecret,
+  validateStateCodeFormat
 };

@@ -8,7 +8,8 @@ const {
   verifyTOTPCode,
   encryptSecret,
   decryptSecret,
-  sanitizeDocId
+  sanitizeDocId,
+  validateStateCodeFormat
 } = require('../utils/helpers');
 const { 
   sendVerificationEmail,
@@ -70,19 +71,14 @@ const signup = async (req, res) => {
       email,
       phone,
       stateCode,
-      servingState,
-      localGovernment,
-      ppa,
-      cdsGroup,
       password,
       confirmPassword
     } = req.body;
 
-    if (!firstName || !lastName || !email || !phone || !stateCode || 
-        !servingState || !localGovernment || !ppa || !cdsGroup || !password || !confirmPassword) {
+    if (!firstName || !lastName || !email || !phone || !stateCode || !password || !confirmPassword) {
       return res.status(400).json({
         success: false,
-        message: 'All fields are required'
+        message: 'Required fields: First Name, Last Name, Email, Phone, State Code, Password'
       });
     }
 
@@ -90,6 +86,13 @@ const signup = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Passwords do not match'
+      });
+    }
+
+    if (!validateStateCodeFormat(stateCode)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid state code format. Use format: ST/XX/0000 (e.g., KG/25C/0001)'
       });
     }
 
@@ -131,10 +134,10 @@ const signup = async (req, res) => {
       email: emailLower,
       phone,
       stateCode: stateCodeUpper,
-      servingState,
-      localGovernment,
-      ppa,
-      cdsGroup,
+      servingState: '',
+      localGovernment: '',
+      ppa: '',
+      cdsGroup: '',
       password: hashedPassword,
       verificationCode,
       verificationExpiry: verificationExpiry.toISOString(),
