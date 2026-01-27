@@ -71,14 +71,15 @@ const signup = async (req, res) => {
       email,
       phone,
       stateCode,
+      servingState,
       password,
       confirmPassword
     } = req.body;
 
-    if (!firstName || !lastName || !email || !phone || !stateCode || !password || !confirmPassword) {
+    if (!firstName || !lastName || !email || !phone || !stateCode || !servingState || !password || !confirmPassword) {
       return res.status(400).json({
         success: false,
-        message: 'Required fields: First Name, Last Name, Email, Phone, State Code, Password'
+        message: 'Required fields: First Name, Last Name, Email, Phone, State Code, Serving State, Password'
       });
     }
 
@@ -98,6 +99,7 @@ const signup = async (req, res) => {
 
     const emailLower = email.toLowerCase();
     const stateCodeUpper = stateCode.toUpperCase();
+    const servingStateProper = servingState.trim();
     
     const safeDocId = emailLower.replace(/[^a-zA-Z0-9]/g, '_');
 
@@ -134,7 +136,7 @@ const signup = async (req, res) => {
       email: emailLower,
       phone,
       stateCode: stateCodeUpper,
-      servingState: '',
+      servingState: servingStateProper,
       localGovernment: '',
       ppa: '',
       cdsGroup: '',
@@ -168,7 +170,8 @@ const signup = async (req, res) => {
       message: 'Registration successful! Check email for verification code.',
       data: {
         email: emailLower,
-        stateCode: stateCodeUpper
+        stateCode: stateCodeUpper,
+        servingState: servingStateProper
       }
     });
   } catch (error) {
@@ -248,6 +251,7 @@ const verifyEmail = async (req, res) => {
           firstName: pendingData.firstName,
           lastName: pendingData.lastName,
           email: pendingData.email,
+          servingState: pendingData.servingState,
           cdsGroup: pendingData.cdsGroup,
           twoFactorEnabled: false
         }
@@ -955,6 +959,7 @@ const checkStatus = async (req, res) => {
           status: 'pending',
           email: data.email,
           stateCode: data.stateCode,
+          servingState: data.servingState,
           name: `${data.firstName} ${data.lastName}`,
           step: data.registrationStep || 2,
           twoFactorEnabled: data.twoFactorEnabled
@@ -974,6 +979,7 @@ const checkStatus = async (req, res) => {
           status: 'verified',
           email: data.email,
           stateCode: data.stateCode,
+          servingState: data.servingState,
           name: `${data.firstName} ${data.lastName}`,
           twoFactorEnabled: data.twoFactorEnabled
         }
@@ -1041,7 +1047,8 @@ const continueRegistration = async (req, res) => {
       message: 'Verification code resent. Check your email.',
       data: {
         email: emailLower,
-        stateCode: pendingData.stateCode
+        stateCode: pendingData.stateCode,
+        servingState: pendingData.servingState
       }
     });
   } catch (error) {
