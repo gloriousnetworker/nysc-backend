@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const QRCode = require('qrcode');
 const authRoutes = require('./routes/auth');
 const { db } = require('./firebase');
+const { encryptSecret, decryptSecret } = require('./utils/helpers');
 
 const app = express();
 
@@ -131,6 +132,34 @@ app.get('/api/test-firestore', async (req, res) => {
     res.json({
       success: false,
       message: 'Firestore connection failed',
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/test-encryption', (req, res) => {
+  try {
+    const testText = 'test_secret_123';
+    const encrypted = encryptSecret(testText);
+    const decrypted = decryptSecret(encrypted);
+    const success = decrypted === testText;
+    
+    res.json({
+      success: true,
+      test: 'Encryption/Decryption',
+      result: success ? 'PASS' : 'FAIL',
+      original: testText,
+      encrypted: encrypted.substring(0, 50) + '...',
+      decrypted: decrypted,
+      match: success,
+      encryptionKeyPresent: !!process.env.ENCRYPTION_KEY,
+      encryptionKeyLength: process.env.ENCRYPTION_KEY ? process.env.ENCRYPTION_KEY.length : 0
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      test: 'Encryption/Decryption',
+      result: 'FAIL',
       error: error.message
     });
   }

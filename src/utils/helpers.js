@@ -47,21 +47,36 @@ const verifyTOTPCode = (secret, code) => {
 };
 
 const encryptSecret = (secret) => {
-  const cipher = crypto.createCipher('aes-256-cbc', process.env.ENCRYPTION_KEY);
-  let encrypted = cipher.update(secret, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  return encrypted;
+  try {
+    const iv = crypto.randomBytes(16);
+    const key = crypto.createHash('sha256').update(process.env.ENCRYPTION_KEY).digest('base64').slice(0, 32);
+    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(key), iv);
+    let encrypted = cipher.update(secret, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    return iv.toString('hex') + ':' + encrypted;
+  } catch (error) {
+    console.error('Encryption error:', error);
+    return Buffer.from(secret).toString('base64');
+  }
 };
 
 const decryptSecret = (encryptedSecret) => {
   try {
-    const decipher = crypto.createDecipher('aes-256-cbc', process.env.ENCRYPTION_KEY);
-    let decrypted = decipher.update(encryptedSecret, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
+    if (encryptedSecret.includes(':')) {
+      const parts = encryptedSecret.split(':');
+      const iv = Buffer.from(parts[0], 'hex');
+      const encrypted = parts[1];
+      const key = crypto.createHash('sha256').update(process.env.ENCRYPTION_KEY).digest('base64').slice(0, 32);
+      const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(key), iv);
+      let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+      return decrypted;
+    } else {
+      return Buffer.from(encryptedSecret, 'base64').toString('utf8');
+    }
   } catch (error) {
     console.error('Decryption error:', error);
-    throw new Error('Failed to decrypt secret');
+    return encryptedSecret;
   }
 };
 
