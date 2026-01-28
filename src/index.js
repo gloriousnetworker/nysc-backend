@@ -21,12 +21,11 @@ app.use(cors({
       return callback(null, true);
     }
     
-    const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-    return callback(new Error(msg), false);
+    return callback(new Error('Not allowed by CORS'), false);
   },
   credentials: true,
-  exposedHeaders: ['set-cookie'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With']
 }));
 
 app.use(cookieParser());
@@ -65,6 +64,27 @@ app.get('/api/debug/cookies', (req, res) => {
     },
     environment: process.env.NODE_ENV,
     isVercel: process.env.VERCEL === '1'
+  });
+});
+
+app.get('/api/debug/set-test-cookie', (req, res) => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  const cookieOptions = {
+    httpOnly: true,
+    secure: isProduction,
+    maxAge: 3600000,
+    path: '/',
+    sameSite: isProduction ? 'none' : 'lax'
+  };
+  
+  res.cookie('test_cookie', 'test_value_' + Date.now(), cookieOptions);
+  
+  res.json({
+    success: true,
+    message: 'Test cookie set',
+    cookieOptions,
+    environment: process.env.NODE_ENV
   });
 });
 
