@@ -1,12 +1,16 @@
 const jwt = require('jsonwebtoken');
 
 const authMiddleware = (req, res, next) => {
-  const token = req.cookies.nysc_token;
-
+  let token = req.cookies?.nysc_token;
+  
+  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+  
   if (!token) {
     return res.status(401).json({ 
       success: false, 
-      message: 'No token provided' 
+      message: 'Authentication required. Please login.' 
     });
   }
 
@@ -18,18 +22,18 @@ const authMiddleware = (req, res, next) => {
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ 
         success: false, 
-        message: 'Token expired' 
+        message: 'Session expired. Please login again.' 
       });
     }
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({ 
         success: false, 
-        message: 'Invalid token' 
+        message: 'Invalid authentication token.' 
       });
     }
     return res.status(401).json({ 
       success: false, 
-      message: 'Authentication failed' 
+      message: 'Authentication failed.' 
     });
   }
 };
