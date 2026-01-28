@@ -476,19 +476,40 @@ const verify2FA = async (req, res) => {
 
 const setup2FA = async (req, res) => {
   try {
+    console.log('=== SETUP 2FA STARTED ===');
+    console.log('Environment:', process.env.NODE_ENV);
+    console.log('User from middleware:', req.user);
+    console.log('Cookies present:', !!req.cookies?.nysc_token);
+    
+    if (!req.user) {
+      console.log('ERROR: No user in request');
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
+    
     const { stateCode } = req.user;
+    console.log('StateCode from user:', stateCode);
 
     if (!stateCode) {
+      console.log('ERROR: No stateCode in req.user');
       return res.status(400).json({
         success: false,
         message: 'State code required'
       });
     }
 
+    console.log('Sanitizing stateCode...');
     const stateCodeDocId = sanitizeDocId(stateCode);
+    console.log('Sanitized ID:', stateCodeDocId);
+    
+    console.log('Fetching user from Firestore...');
     const corperDoc = await db.collection('corpers').doc(stateCodeDocId).get();
+    console.log('Document exists:', corperDoc.exists);
 
     if (!corperDoc.exists) {
+      console.log('ERROR: User not found in database');
       return res.status(404).json({
         success: false,
         message: 'Corper not found'
@@ -496,6 +517,8 @@ const setup2FA = async (req, res) => {
     }
 
     const corperData = corperDoc.data();
+    console.log('User found:', corperData.email);
+    console.log('2FA already enabled:', corperData.twoFactorEnabled);
 
     if (corperData.twoFactorEnabled) {
       return res.status(400).json({
@@ -504,23 +527,43 @@ const setup2FA = async (req, res) => {
       });
     }
 
+    console.log('Generating TOTP secret...');
     const secret = generateTOTPSecret();
-    const encryptedSecret = encryptSecret(secret);
+    console.log('Secret generated (first 10 chars):', secret.substring(0, 10) + '...');
     
+    console.log('Encrypting secret...');
+    const encryptedSecret = encryptSecret(secret);
+    console.log('Secret encrypted');
+    
+    console.log('Generating backup codes...');
     const backupCodes = Array.from({ length: 8 }, () => 
       Math.floor(100000 + Math.random() * 900000).toString()
     );
+    console.log('Backup codes generated');
 
     const otpauthUrl = `otpauth://totp/${encodeURIComponent(process.env.APP_NAME)}:${encodeURIComponent(corperData.email)}?secret=${secret}&issuer=${encodeURIComponent(process.env.TOTP_ISSUER)}&algorithm=SHA1&digits=6&period=30`;
+    console.log('OTPAuth URL created (first 50 chars):', otpauthUrl.substring(0, 50) + '...');
     
-    const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+    console.log('Generating QR code...');
+    let qrCodeDataUrl;
+    try {
+      qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+      console.log('QR code generated successfully');
+    } catch (qrError) {
+      console.error('QR Code generation failed:', qrError);
+      throw new Error(`QR Code generation failed: ${qrError.message}`);
+    }
 
+    console.log('Updating Firestore...');
     await corperDoc.ref.update({
       twoFactorSecret: encryptedSecret,
       backupCodes,
       updatedAt: new Date().toISOString()
     });
+    console.log('Firestore updated successfully');
 
+    console.log('=== SETUP 2FA SUCCESS ===');
+    
     res.status(200).json({
       success: true,
       message: 'Two-factor authentication setup initiated',
@@ -533,10 +576,24 @@ const setup2FA = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('2FA setup error:', error);
+    console.error('=== SETUP 2FA ERROR ===');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('Environment variables check:');
+    console.error('- APP_NAME:', process.env.APP_NAME);
+    console.error('- TOTP_ISSUER:', process.env.TOTP_ISSUER);
+    console.error('- NODE_ENV:', process.env.NODE_ENV);
+    console.error('- ENCRYPTION_KEY exists:', !!process.env.ENCRYPTION_KEY);
+    
     res.status(500).json({
       success: false,
-      message: 'Server error during 2FA setup'
+      message: 'Server error during 2FA setup',
+      // Include detailed error in development
+      ...(process.env.NODE_ENV !== 'production' && {
+        error: error.message,
+        errorType: error.name
+      })
     });
   }
 };

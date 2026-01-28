@@ -2,7 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const QRCode = require('qrcode');
 const authRoutes = require('./routes/auth');
+const { db } = require('./firebase');
 
 const app = express();
 
@@ -86,6 +88,52 @@ app.get('/api/debug/set-test-cookie', (req, res) => {
     cookieOptions,
     environment: process.env.NODE_ENV
   });
+});
+
+app.get('/api/test-qrcode', async (req, res) => {
+  try {
+    const testUrl = 'otpauth://totp/Test:test@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Test';
+    const qrCode = await QRCode.toDataURL(testUrl);
+    
+    res.json({
+      success: true,
+      message: 'QR Code generation works',
+      qrCode: qrCode.substring(0, 100) + '...'
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      message: 'QR Code generation failed',
+      error: error.message
+    });
+  }
+});
+
+app.get('/api/test-firestore', async (req, res) => {
+  try {
+    const testDoc = await db.collection('test').doc('test').get();
+    
+    if (!testDoc.exists) {
+      await db.collection('test').doc('test').set({
+        message: 'Test successful',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    const updatedDoc = await db.collection('test').doc('test').get();
+    
+    res.json({
+      success: true,
+      message: 'Firestore connection works',
+      data: updatedDoc.data()
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      message: 'Firestore connection failed',
+      error: error.message
+    });
+  }
 });
 
 app.use('/api/auth', authRoutes);
