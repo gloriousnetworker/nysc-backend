@@ -232,7 +232,6 @@ const verifyEmail = async (req, res) => {
       success: true,
       message: 'Email verified successfully!',
       data: {
-        token,
         corper: {
           stateCode: pendingData.stateCode,
           firstName: pendingData.firstName,
@@ -334,8 +333,6 @@ const login = async (req, res) => {
       success: true,
       message: 'Login successful',
       data: {
-        token,
-        requires2FA: false,
         corper: {
           stateCode: corperData.stateCode,
           firstName: corperData.firstName,
@@ -448,7 +445,6 @@ const verify2FA = async (req, res) => {
       success: true,
       message: 'Two-factor authentication successful',
       data: {
-        token,
         corper: {
           stateCode: corperData.stateCode,
           firstName: corperData.firstName,
@@ -476,40 +472,19 @@ const verify2FA = async (req, res) => {
 
 const setup2FA = async (req, res) => {
   try {
-    console.log('=== SETUP 2FA STARTED ===');
-    console.log('Environment:', process.env.NODE_ENV);
-    console.log('User from middleware:', req.user);
-    console.log('Cookies present:', !!req.cookies?.nysc_token);
-    
-    if (!req.user) {
-      console.log('ERROR: No user in request');
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required'
-      });
-    }
-    
     const { stateCode } = req.user;
-    console.log('StateCode from user:', stateCode);
 
     if (!stateCode) {
-      console.log('ERROR: No stateCode in req.user');
       return res.status(400).json({
         success: false,
         message: 'State code required'
       });
     }
 
-    console.log('Sanitizing stateCode...');
     const stateCodeDocId = sanitizeDocId(stateCode);
-    console.log('Sanitized ID:', stateCodeDocId);
-    
-    console.log('Fetching user from Firestore...');
     const corperDoc = await db.collection('corpers').doc(stateCodeDocId).get();
-    console.log('Document exists:', corperDoc.exists);
 
     if (!corperDoc.exists) {
-      console.log('ERROR: User not found in database');
       return res.status(404).json({
         success: false,
         message: 'Corper not found'
@@ -517,8 +492,6 @@ const setup2FA = async (req, res) => {
     }
 
     const corperData = corperDoc.data();
-    console.log('User found:', corperData.email);
-    console.log('2FA already enabled:', corperData.twoFactorEnabled);
 
     if (corperData.twoFactorEnabled) {
       return res.status(400).json({
@@ -527,43 +500,23 @@ const setup2FA = async (req, res) => {
       });
     }
 
-    console.log('Generating TOTP secret...');
     const secret = generateTOTPSecret();
-    console.log('Secret generated');
-    
-    console.log('Encrypting secret...');
     const encryptedSecret = encryptSecret(secret);
-    console.log('Secret encrypted');
     
-    console.log('Generating backup codes...');
     const backupCodes = Array.from({ length: 8 }, () => 
       Math.floor(100000 + Math.random() * 900000).toString()
     );
-    console.log('Backup codes generated');
 
     const otpauthUrl = `otpauth://totp/${encodeURIComponent(process.env.APP_NAME)}:${encodeURIComponent(corperData.email)}?secret=${secret}&issuer=${encodeURIComponent(process.env.TOTP_ISSUER)}&algorithm=SHA1&digits=6&period=30`;
-    console.log('OTPAuth URL created');
     
-    console.log('Generating QR code...');
-    let qrCodeDataUrl;
-    try {
-      qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
-      console.log('QR code generated successfully');
-    } catch (qrError) {
-      console.error('QR Code generation failed:', qrError);
-      throw new Error(`QR Code generation failed: ${qrError.message}`);
-    }
+    const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
 
-    console.log('Updating Firestore...');
     await corperDoc.ref.update({
       twoFactorSecret: encryptedSecret,
       backupCodes,
       updatedAt: new Date().toISOString()
     });
-    console.log('Firestore updated successfully');
 
-    console.log('=== SETUP 2FA SUCCESS ===');
-    
     res.status(200).json({
       success: true,
       message: 'Two-factor authentication setup initiated',
@@ -576,11 +529,7 @@ const setup2FA = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('=== SETUP 2FA ERROR ===');
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
-    
+    console.error('2FA setup error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error during 2FA setup'

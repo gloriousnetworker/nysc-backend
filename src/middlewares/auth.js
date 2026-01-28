@@ -1,11 +1,7 @@
 const jwt = require('jsonwebtoken');
 
 const authMiddleware = (req, res, next) => {
-  let token = req.cookies?.nysc_token;
-  
-  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-    token = req.headers.authorization.split(' ')[1];
-  }
+  const token = req.cookies?.nysc_token;
   
   if (!token) {
     return res.status(401).json({ 

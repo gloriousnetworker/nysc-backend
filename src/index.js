@@ -2,10 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
-const QRCode = require('qrcode');
 const authRoutes = require('./routes/auth');
-const { db } = require('./firebase');
-const { encryptSecret, decryptSecret } = require('./utils/helpers');
 
 const app = express();
 
@@ -52,117 +49,8 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
     isVercel: process.env.VERCEL === '1',
-    frontendUrl: process.env.FRONTEND_URL,
-    corsOrigins: allowedOrigins
+    frontendUrl: process.env.FRONTEND_URL
   });
-});
-
-app.get('/api/debug/cookies', (req, res) => {
-  res.json({
-    success: true,
-    cookies: req.cookies,
-    headers: {
-      cookie: req.headers.cookie,
-      authorization: req.headers.authorization
-    },
-    environment: process.env.NODE_ENV,
-    isVercel: process.env.VERCEL === '1'
-  });
-});
-
-app.get('/api/debug/set-test-cookie', (req, res) => {
-  const isProduction = process.env.NODE_ENV === 'production';
-  
-  const cookieOptions = {
-    httpOnly: true,
-    secure: isProduction,
-    maxAge: 3600000,
-    path: '/',
-    sameSite: isProduction ? 'none' : 'lax'
-  };
-  
-  res.cookie('test_cookie', 'test_value_' + Date.now(), cookieOptions);
-  
-  res.json({
-    success: true,
-    message: 'Test cookie set',
-    cookieOptions,
-    environment: process.env.NODE_ENV
-  });
-});
-
-app.get('/api/test-qrcode', async (req, res) => {
-  try {
-    const testUrl = 'otpauth://totp/Test:test@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Test';
-    const qrCode = await QRCode.toDataURL(testUrl);
-    
-    res.json({
-      success: true,
-      message: 'QR Code generation works',
-      qrCode: qrCode.substring(0, 100) + '...'
-    });
-  } catch (error) {
-    res.json({
-      success: false,
-      message: 'QR Code generation failed',
-      error: error.message
-    });
-  }
-});
-
-app.get('/api/test-firestore', async (req, res) => {
-  try {
-    const testDoc = await db.collection('test').doc('test').get();
-    
-    if (!testDoc.exists) {
-      await db.collection('test').doc('test').set({
-        message: 'Test successful',
-        timestamp: new Date().toISOString()
-      });
-    }
-    
-    const updatedDoc = await db.collection('test').doc('test').get();
-    
-    res.json({
-      success: true,
-      message: 'Firestore connection works',
-      data: updatedDoc.data()
-    });
-  } catch (error) {
-    res.json({
-      success: false,
-      message: 'Firestore connection failed',
-      error: error.message
-    });
-  }
-});
-
-app.get('/api/test-encryption', (req, res) => {
-  try {
-    const testText = 'test_secret_123';
-    const encrypted = encryptSecret(testText);
-    const decrypted = decryptSecret(encrypted);
-    const success = decrypted === testText;
-    
-    res.json({
-      success: true,
-      test: 'Encryption/Decryption',
-      result: success ? 'PASS' : 'FAIL',
-      original: testText,
-      encrypted: encrypted.substring(0, 50) + '...',
-      decrypted: decrypted,
-      match: success,
-      encryptionKeyPresent: !!process.env.ENCRYPTION_KEY,
-      encryptionKeyLength: process.env.ENCRYPTION_KEY ? process.env.ENCRYPTION_KEY.length : 0
-    });
-  } catch (error) {
-    res.json({
-      success: false,
-      test: 'Encryption/Decryption',
-      result: 'FAIL',
-      error: error.message
-    });
-  }
 });
 
 app.use('/api/auth', authRoutes);
