@@ -478,10 +478,8 @@ const setup2FA = async (req, res) => {
   try {
     console.log('=== SETUP 2FA STARTED ===');
     console.log('Environment:', process.env.NODE_ENV);
-    console.log('User from middleware:', JSON.stringify(req.user));
+    console.log('User from middleware:', req.user);
     console.log('Cookies present:', !!req.cookies?.nysc_token);
-    console.log('ENCRYPTION_KEY exists:', !!process.env.ENCRYPTION_KEY);
-    console.log('ENCRYPTION_KEY length:', process.env.ENCRYPTION_KEY ? process.env.ENCRYPTION_KEY.length : 0);
     
     if (!req.user) {
       console.log('ERROR: No user in request');
@@ -519,8 +517,8 @@ const setup2FA = async (req, res) => {
     }
 
     const corperData = corperDoc.data();
-    console.log('User found - email:', corperData.email);
-    console.log('User found - 2FA enabled:', corperData.twoFactorEnabled);
+    console.log('User found:', corperData.email);
+    console.log('2FA already enabled:', corperData.twoFactorEnabled);
 
     if (corperData.twoFactorEnabled) {
       return res.status(400).json({
@@ -531,105 +529,61 @@ const setup2FA = async (req, res) => {
 
     console.log('Generating TOTP secret...');
     const secret = generateTOTPSecret();
-    console.log('Secret generated:', secret);
+    console.log('Secret generated');
     
-    console.log('Testing encryption...');
-    let encryptedSecret;
-    try {
-      encryptedSecret = encryptSecret(secret);
-      console.log('Encryption successful');
-      console.log('Encrypted secret (first 20 chars):', encryptedSecret.substring(0, 20));
-    } catch (encryptError) {
-      console.error('ENCRYPTION FAILED:', encryptError);
-      console.error('Encryption error stack:', encryptError.stack);
-      throw new Error(`Encryption failed: ${encryptError.message}`);
-    }
-    
-    console.log('Testing decryption...');
-    try {
-      const decryptedTest = decryptSecret(encryptedSecret);
-      console.log('Decryption test successful');
-      console.log('Original vs decrypted match:', decryptedTest === secret);
-    } catch (decryptError) {
-      console.error('DECRYPTION TEST FAILED:', decryptError);
-      console.error('Decryption error stack:', decryptError.stack);
-    }
+    console.log('Encrypting secret...');
+    const encryptedSecret = encryptSecret(secret);
+    console.log('Secret encrypted');
     
     console.log('Generating backup codes...');
     const backupCodes = Array.from({ length: 8 }, () => 
       Math.floor(100000 + Math.random() * 900000).toString()
     );
-    console.log('Backup codes generated:', backupCodes);
+    console.log('Backup codes generated');
 
     const otpauthUrl = `otpauth://totp/${encodeURIComponent(process.env.APP_NAME)}:${encodeURIComponent(corperData.email)}?secret=${secret}&issuer=${encodeURIComponent(process.env.TOTP_ISSUER)}&algorithm=SHA1&digits=6&period=30`;
-    console.log('OTPAuth URL:', otpauthUrl);
+    console.log('OTPAuth URL created');
     
     console.log('Generating QR code...');
     let qrCodeDataUrl;
     try {
       qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
       console.log('QR code generated successfully');
-      console.log('QR code size:', qrCodeDataUrl.length, 'chars');
     } catch (qrError) {
       console.error('QR Code generation failed:', qrError);
       throw new Error(`QR Code generation failed: ${qrError.message}`);
     }
 
     console.log('Updating Firestore...');
-    try {
-      await corperDoc.ref.update({
-        twoFactorSecret: encryptedSecret,
-        backupCodes,
-        updatedAt: new Date().toISOString()
-      });
-      console.log('Firestore updated successfully');
-    } catch (firestoreError) {
-      console.error('Firestore update failed:', firestoreError);
-      throw new Error(`Firestore update failed: ${firestoreError.message}`);
-    }
+    await corperDoc.ref.update({
+      twoFactorSecret: encryptedSecret,
+      backupCodes,
+      updatedAt: new Date().toISOString()
+    });
+    console.log('Firestore updated successfully');
 
     console.log('=== SETUP 2FA SUCCESS ===');
-    
-    // Return a simplified response for production debugging
-    const responseData = {
-      secret,
-      qrCode: qrCodeDataUrl.substring(0, 100) + '...',
-      backupCodes,
-      stateCode: corperData.stateCode,
-      email: corperData.email
-    };
-    
-    // In production, hide full QR code
-    if (process.env.NODE_ENV === 'production') {
-      responseData.qrCode = 'data:image/png;base64,[TRUNCATED]';
-    }
     
     res.status(200).json({
       success: true,
       message: 'Two-factor authentication setup initiated',
-      data: responseData
+      data: {
+        secret,
+        qrCode: qrCodeDataUrl,
+        backupCodes,
+        stateCode: corperData.stateCode,
+        email: corperData.email
+      }
     });
   } catch (error) {
     console.error('=== SETUP 2FA ERROR ===');
     console.error('Error name:', error.name);
     console.error('Error message:', error.message);
     console.error('Error stack:', error.stack);
-    console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-    console.error('Environment variables:');
-    console.error('- APP_NAME:', process.env.APP_NAME);
-    console.error('- TOTP_ISSUER:', process.env.TOTP_ISSUER);
-    console.error('- NODE_ENV:', process.env.NODE_ENV);
-    console.error('- ENCRYPTION_KEY present:', !!process.env.ENCRYPTION_KEY);
     
     res.status(500).json({
       success: false,
-      message: 'Server error during 2FA setup',
-      // Include detailed error for debugging
-      ...(process.env.NODE_ENV !== 'production' && {
-        error: error.message,
-        errorType: error.name,
-        stack: error.stack
-      })
+      message: 'Server error during 2FA setup'
     });
   }
 };
