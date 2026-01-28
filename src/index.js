@@ -55,6 +55,19 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+app.get('/api/debug/cookies', (req, res) => {
+  res.json({
+    success: true,
+    cookies: req.cookies,
+    headers: {
+      cookie: req.headers.cookie,
+      authorization: req.headers.authorization
+    },
+    environment: process.env.NODE_ENV,
+    isVercel: process.env.VERCEL === '1'
+  });
+});
+
 app.use('/api/auth', authRoutes);
 
 app.use((req, res) => {

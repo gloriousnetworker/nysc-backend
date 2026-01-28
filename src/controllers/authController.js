@@ -246,6 +246,7 @@ const verifyEmail = async (req, res) => {
       success: true,
       message: 'Email verified successfully!',
       data: {
+        token,
         corper: {
           stateCode: pendingData.stateCode,
           firstName: pendingData.firstName,
@@ -347,6 +348,7 @@ const login = async (req, res) => {
       success: true,
       message: 'Login successful',
       data: {
+        token,
         requires2FA: false,
         corper: {
           stateCode: corperData.stateCode,
@@ -460,6 +462,7 @@ const verify2FA = async (req, res) => {
       success: true,
       message: 'Two-factor authentication successful',
       data: {
+        token,
         corper: {
           stateCode: corperData.stateCode,
           firstName: corperData.firstName,
